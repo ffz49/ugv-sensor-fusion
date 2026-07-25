@@ -1,0 +1,14 @@
+# ROS 2 Build Folders
+build/
+install/
+log/
+
+# Python Caches
+__pycache__/
+*.pyc
+
+# Heavy Sensor Data
+*.bag
+*.db3
+*.pcd
+*.mcap
