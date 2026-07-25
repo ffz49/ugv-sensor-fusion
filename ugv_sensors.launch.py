@@ -33,9 +33,9 @@ def generate_launch_description():
         executable='static_transform_publisher',
         name='static_transform_publisher_zed',
         arguments=[
-            '--x', '0.0',
-            '--y', '0.0',
-            '--z', '0.81', 
+            '--x', '0.45',         # 45 cm forward from UGV center
+            '--y', '0.0',          # Centered left/right
+            '--z', '0.81',         # Height from ground
             '--roll', '-0.0110',
             '--pitch', '-0.3309',  # Camera tilts downward
             '--yaw', '0.0',
@@ -44,18 +44,18 @@ def generate_launch_description():
         ]
     )
 
-    # 4. Static Transform (base_link to umrr)
+   # 4. Static Transform (base_link to umrr)
     static_tf_radar = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
         name='static_transform_publisher_radar',
         arguments=[
-            '--x', '0.0', 
-            '--y', '0.0', 
-            '--z', '0.66',         # Radar height is exactly 66 cm
+            '--x', '0.45',         # 45 cm forward from UGV center
+            '--y', '0.0',          # Centered left/right
+            '--z', '0.66',         # Height from ground
             '--roll', '0.0', 
-            '--pitch', '0.0',      # Radar is perfectly level
-            '--yaw', '0.0',      
+            '--pitch', '0.0', 
+            '--yaw', '1.5708',     # 90 degrees offset to align with camera
             '--frame-id', 'base_link',
             '--child-frame-id', 'umrr'
         ]
