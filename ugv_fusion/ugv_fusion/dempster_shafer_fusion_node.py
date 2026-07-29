@@ -2,6 +2,7 @@ import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import OccupancyGrid
 from std_msgs.msg import Float32
+from visualization_msgs.msg import Marker  # <-- Added for RViz Text
 import cupy as cp  # <-- GPU Acceleration Library
 
 class DempsterShaferFusionNode(Node):
@@ -19,6 +20,9 @@ class DempsterShaferFusionNode(Node):
         self.create_subscription(OccupancyGrid, '/planning/radar_bev_grid', self.radar_callback, 10)
 
         self.pub_fused_grid = self.create_publisher(OccupancyGrid, '/planning/fused_bev_grid', 10)
+        
+        # New Publisher for RViz Text Marker
+        self.pub_status_text = self.create_publisher(Marker, '/planning/fusion_status_text', 10)
         
         self.timer = self.create_timer(0.1, self.fuse_grids)
         
@@ -76,9 +80,40 @@ class DempsterShaferFusionNode(Node):
         fused_msg.data = fused_array_cpu.tolist()
         
         self.pub_fused_grid.publish(fused_msg)
+        
+        # 7. Publish RViz Status Text
+        self.publish_status_marker()
 
-def main():
-    rclpy.init()
+    def publish_status_marker(self):
+        marker = Marker()
+        marker.header.frame_id = "base_link"
+        marker.header.stamp = self.get_clock().now().to_msg()
+        marker.ns = "fusion_status"
+        marker.id = 0
+        marker.type = Marker.TEXT_VIEW_FACING
+        marker.action = Marker.ADD
+        
+        # Float the text 2 meters above the robot
+        marker.pose.position.x = 0.0
+        marker.pose.position.y = 0.0
+        marker.pose.position.z = 2.0 
+        
+        # Text Scale (Height)
+        marker.scale.z = 0.4
+        
+        # Text Color (White)
+        marker.color.a = 1.0
+        marker.color.r = 1.0
+        marker.color.g = 1.0
+        marker.color.b = 1.0
+        
+        # The actual string displayed in RViz
+        marker.text = f"Visual Alpha: {self.alpha:.2f}\nRadar Beta: {self.beta:.2f}"
+        
+        self.pub_status_text.publish(marker)
+
+def main(args=None):
+    rclpy.init(args=args)
     node = DempsterShaferFusionNode()
     rclpy.spin(node)
     rclpy.shutdown()

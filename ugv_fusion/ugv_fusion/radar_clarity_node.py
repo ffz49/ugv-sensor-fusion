@@ -52,10 +52,9 @@ class RadarClarityNode(Node):
         beta_msg.data = beta
         self.pub_beta.publish(beta_msg)
         
-        self.get_logger().info(f"Targets: {target_count} | Avg SNR: {avg_intensity:.2f} | Fusion Beta Weight: {beta:.2f}")
-
-def main():
-    rclpy.init()
+        self.get_logger().debug(f"Targets: {target_count} | Avg SNR: {avg_intensity:.2f} | Fusion Beta Weight: {beta:.2f}")
+def main(args=None):
+    rclpy.init(args=args)
     node = RadarClarityNode()
     rclpy.spin(node)
     rclpy.shutdown()

@@ -55,11 +55,12 @@ def generate_launch_description():
             '--z', '0.66',         # Height from ground
             '--roll', '0.0', 
             '--pitch', '0.0', 
-            '--yaw', '1.5708',     # 90 degrees offset to align with camera
+            '--yaw', '0.0',     # 180 degrees offset to align with camera
             '--frame-id', 'base_link',
             '--child-frame-id', 'umrr'
         ]
     )
+    
 
     return LaunchDescription([
         zed_launch,

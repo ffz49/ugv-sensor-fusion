@@ -13,8 +13,8 @@ class RadarBEVNode(Node):
 
         # Grid Parameters
         self.resolution = 0.05  # 10 cm per cell
-        self.grid_size_x = 30.0  # meters forward
-        self.grid_size_y = 30.0  # meters left/right
+        self.grid_size_x = 15.0  # meters forward
+        self.grid_size_y = 15.0  # meters left/right
         self.width = int(self.grid_size_x / self.resolution)
         self.height = int(self.grid_size_y / self.resolution)
         
@@ -85,8 +85,8 @@ class RadarBEVNode(Node):
         grid_msg.data = grid_data.flatten().tolist()
         self.pub_grid.publish(grid_msg)
 
-def main():
-    rclpy.init()
+def main(args=None):
+    rclpy.init(args=args)
     node = RadarBEVNode()
     rclpy.spin(node)
     rclpy.shutdown()

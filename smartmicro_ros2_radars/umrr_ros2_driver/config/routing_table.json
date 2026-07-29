@@ -1,7 +1,18 @@
 {
     "clients": [
         {
-            "can_network_id": 0
+            "can_network_id": 0,
+            "client_id": 16777217,
+            "data_serialization_type": "port_based",
+            "dev_id": 4,
+            "instruction_serialization_type": "port_based",
+            "ip": "192.168.11.11",
+            "link_type": "eth",
+            "port": 55555,
+            "user_interface_major_v": 2,
+            "user_interface_minor_v": 0,
+            "user_interface_name": "umrra1_t166_b_automotive",
+            "user_interface_patch_v": 0
         }
     ],
     "name": "Client Routing Table",
