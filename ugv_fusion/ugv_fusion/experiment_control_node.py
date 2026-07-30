@@ -1,69 +1,79 @@
 import rclpy
 from rclpy.node import Node
-from visualization_msgs.msg import MarkerArray
-from geometry_msgs.msg import Twist
+from rclpy.action import ActionClient
+from nav2_msgs.action import NavigateToPose
+from geometry_msgs.msg import PoseStamped
+import sys
 
 class ExperimentControlNode(Node):
     def __init__(self):
         super().__init__('experiment_control_node')
         
-        # 1. Listen to the fusion pipeline's 3D bounding boxes
-        self.sub_fusion = self.create_subscription(MarkerArray, '/planning/diagnostic_fusion_markers', self.fusion_callback, 10)
+        # Create an Action Client to talk to the Nav2 Stack
+        self.nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
         
-        # 2. Publish to the AI movement topic (which twist_mux will read)
-        self.pub_cmd = self.create_publisher(Twist, '/ai/cmd_vel', 10)
+        # --- EXPERIMENT PARAMETERS ---
+        self.goal_distance_x = 10.0  # Tell the UGV to drive 10 meters forward
+        # -----------------------------
         
-        # --- EXPERIMENT PARAMETERS (Easy to change here!) ---
-        self.max_speed = 0.5       # Cruising speed (m/s)
-        self.safe_distance = 2.0   # Start braking when obstacle is within 3 meters
-        self.stop_distance = 0.8   # Full emergency stop at 1 meter
-        self.robot_width = 0.6     # Only care about obstacles within +/- 0.6m of our center lane
-        # ----------------------------------------------------
+        self.get_logger().info("Experiment Control Brain Initialized. Nav2 Action Client Ready.")
+
+    def send_goal(self):
+        self.get_logger().info("Waiting for Nav2 server to wake up...")
+        self.nav_client.wait_for_server()
         
-        self.get_logger().info("Experiment Control Brain Started. Awaiting obstacles...")
-
-    def fusion_callback(self, msg):
-        cmd = Twist()
-        closest_obstacle_x = float('inf')
-
-        # Parse the 3D coordinates of all fused objects
-        for marker in msg.markers:
-            if marker.type == marker.CUBE: # We only calculate distance using the boxes, not the floating text
-                x = marker.pose.position.x # Distance straight ahead
-                y = marker.pose.position.y # Distance left/right
-                
-                # Check if the object is IN FRONT of us and IN OUR LANE
-                if x > 0 and abs(y) < self.robot_width:
-                    if x < closest_obstacle_x:
-                        closest_obstacle_x = x
-
-        # Movement Logic State Machine
-        if closest_obstacle_x == float('inf'):
-            # STATE 1: Road is entirely clear
-            cmd.linear.x = self.max_speed
-            self.get_logger().info("Path clear. Cruising.", throttle_duration_sec=1.0)
-            
-        elif closest_obstacle_x <= self.stop_distance:
-            # STATE 2: Obstacle is critically close
-            cmd.linear.x = 0.0
-            self.get_logger().warn(f"OBSTACLE AT {closest_obstacle_x:.2f}m! STOPPING.", throttle_duration_sec=0.5)
-            
-        elif closest_obstacle_x <= self.safe_distance:
-            # STATE 3: Obstacle detected, apply proportional braking
-            # Formula: v = v_max * (x - d_stop) / (d_safe - d_stop)
-            speed_factor = (closest_obstacle_x - self.stop_distance) / (self.safe_distance - self.stop_distance)
-            cmd.linear.x = self.max_speed * speed_factor
-            self.get_logger().info(f"Obstacle at {closest_obstacle_x:.2f}m. Braking to {cmd.linear.x:.2f} m/s", throttle_duration_sec=0.5)
-
-        # Keep steering straight for this initial test
-        cmd.angular.z = 0.0
+        # Define the target destination
+        goal_msg = NavigateToPose.Goal()
+        goal_msg.pose = PoseStamped()
         
-        # Publish the command
-        self.pub_cmd.publish(cmd)
+        # We use 'base_link' so the goal is always strictly relative to the UGV's current position
+        goal_msg.pose.header.frame_id = 'base_link'
+        goal_msg.pose.header.stamp = self.get_clock().now().to_msg()
+        
+        # Set the target 10 meters straight ahead
+        goal_msg.pose.pose.position.x = self.goal_distance_x
+        goal_msg.pose.pose.position.y = 0.0
+        goal_msg.pose.pose.position.z = 0.0
+        
+        # Point the UGV perfectly straight forward (Quaternion representation of 0 yaw)
+        goal_msg.pose.pose.orientation.x = 0.0
+        goal_msg.pose.pose.orientation.y = 0.0
+        goal_msg.pose.pose.orientation.z = 0.0
+        goal_msg.pose.pose.orientation.w = 1.0
+
+        self.get_logger().info(f"Sending command to drive {self.goal_distance_x}m forward and avoid obstacles.")
+        
+        # Send the goal and wait for the result asynchronously
+        self.send_goal_future = self.nav_client.send_goal_async(goal_msg)
+        self.send_goal_future.add_done_callback(self.goal_response_callback)
+
+    def goal_response_callback(self, future):
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            self.get_logger().warn("Nav2 REJECTED the goal. Check costmaps!")
+            return
+
+        self.get_logger().info("Nav2 ACCEPTED the goal. UGV is moving.")
+        self.get_result_future = goal_handle.get_result_async()
+        self.get_result_future.add_done_callback(self.get_result_callback)
+
+    def get_result_callback(self, future):
+        result = future.result().result
+        self.get_logger().info("Experiment Complete. Destination reached.")
+        sys.exit(0)
 
 def main(args=None):
     rclpy.init(args=args)
     node = ExperimentControlNode()
+    
+    # Standby Mode blocks execution
+    print("\n" + "="*50)
+    input("PRESS ENTER TO SEND NAV2 GOAL AND ENABLE DRIVING...")
+    print("="*50 + "\n")
+    
+    # Send the navigation goal to Nav2
+    node.send_goal()
+    
     rclpy.spin(node)
     rclpy.shutdown()
 

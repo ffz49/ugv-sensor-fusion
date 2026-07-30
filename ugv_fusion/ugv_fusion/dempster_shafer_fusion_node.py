@@ -14,7 +14,7 @@ class DempsterShaferFusionNode(Node):
         self.alpha = 1.0  
         self.beta = 1.0   
 
-        self.create_subscription(Float32, '/environment/visual_alpha', self.alpha_callback, 10)
+        self.create_subscription(Float32, '/environment/visual_clarity', self.alpha_callback, 10)
         self.create_subscription(Float32, '/environment/radar_beta', self.beta_callback, 10)
         self.create_subscription(OccupancyGrid, '/planning/visual_bev_grid', self.visual_callback, 10)
         self.create_subscription(OccupancyGrid, '/planning/radar_bev_grid', self.radar_callback, 10)

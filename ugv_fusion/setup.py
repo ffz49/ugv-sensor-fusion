@@ -14,6 +14,7 @@ setup(
         ('share/' + package_name, ['package.xml']),
         # 1. This tells the build system to install your launch files
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
+        (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

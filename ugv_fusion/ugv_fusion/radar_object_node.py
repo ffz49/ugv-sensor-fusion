@@ -100,7 +100,7 @@ class RadarObjectNode(Node):
             text_marker.action = Marker.ADD
             text_marker.pose.position.x = marker.pose.position.x
             text_marker.pose.position.y = marker.pose.position.y
-            text_marker.pose.position.z = marker.pose.position.z + (marker.scale.z / 2.0) + 0.3
+            text_marker.pose.position.z = marker.pose.position.z + (marker.scale.z / 2.0) + 0.8
             text_marker.scale.z = 0.35 
             text_marker.color.r, text_marker.color.g, text_marker.color.b, text_marker.color.a = 1.0, 1.0, 1.0, 1.0
             text_marker.text = radar_text

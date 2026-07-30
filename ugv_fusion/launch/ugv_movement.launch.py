@@ -6,64 +6,36 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 
 def generate_launch_description():
-    pkg_dir = get_package_share_directory('your_package_name')
-    twist_mux_config = os.path.join(pkg_dir, 'config', 'twist_mux.yaml')
+    pkg_dir = get_package_share_directory('ugv_fusion')
+    nav2_params_file = os.path.join(pkg_dir, 'config', 'nav2_params.yaml')
     
-    # Locate the AgileX Ranger bringup package
-    # Note: Verify if your specific AgileX package is named 'ranger_bringup' or 'ranger_mini_v2'
-    ranger_bringup_dir = get_package_share_directory('ranger_bringup')
-    ranger_launch_file = os.path.join(ranger_bringup_dir, 'launch', 'ranger.launch.py')
+    # AgileX Ranger/Bunker bringup
+    bunker_bringup_dir = get_package_share_directory('bunker_base')
+    bunker_launch_file = os.path.join(bunker_bringup_dir, 'launch', 'bunker_base.launch.py')
+    
+    # Official Nav2 bringup
+    nav2_bringup_dir = get_package_share_directory('nav2_bringup')
+    nav2_launch_file = os.path.join(nav2_bringup_dir, 'launch', 'navigation_launch.py')
 
     return LaunchDescription([
         
-        # 1. AgileX UGV Driver (starts the physical hardware)
+        # 1. AgileX UGV Driver
         IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(ranger_launch_file)
+            PythonLaunchDescriptionSource(bunker_launch_file),
+            launch_arguments={'port_name': 'can1'}.items()
         ),
         
-        # 2. Joystick Driver (reads raw inputs from the physical controller)
-        Node(
-            package='joy',
-            executable='joy_node',
-            name='joy_node',
-            output='screen'
+        # 2. Nav2 Stack (Loads your MPPI Costmap YAML)
+        IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(nav2_launch_file),
+            launch_arguments={'params_file': nav2_params_file}.items()
         ),
         
-        # 3. Teleop Node (converts raw joystick inputs to velocity commands)
+        # 3. Your Autonomous Experiment Node (The Commander)
         Node(
-            package='teleop_twist_joy',
-            executable='teleop_node',
-            name='teleop_twist_joy',
-            # Requires holding a deadman switch (usually 'RB' or 'LB') to send teleop commands
-            parameters=[{'require_enable_button': True}], 
-            remappings=[
-                # Remap the default output to our teleop topic for twist_mux
-                ('/cmd_vel', '/cmd_vel_teleop') 
-            ]
-        ),
-        
-        # 4. Command Multiplexer (handles priorities)
-        Node(
-            package='twist_mux',
-            executable='twist_mux',
-            name='twist_mux',
-            output='screen',
-            parameters=[twist_mux_config],
-            remappings=[
-                # The winner of the priority battle gets sent directly to the AgileX driver
-                ('/cmd_vel_out', '/cmd_vel') 
-            ]
-        ),
-        
-        # 5. Your Autonomous Experiment Control Node
-        Node(
-            package='your_package_name',
+            package='ugv_fusion',
             executable='experiment_control_node',
             name='experiment_control',
-            output='screen',
-            remappings=[
-                # Remap your node's default output to the lower-priority auto topic
-                ('/cmd_vel', '/cmd_vel_auto') 
-            ]
+            output='screen'
         )
     ])
