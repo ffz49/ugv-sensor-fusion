@@ -17,8 +17,8 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='Your Name',
-    maintainer_email='your_email@example.com',
+    maintainer='felix',
+    maintainer_email='felix909377@gmail.com',
     description='Master thesis UGV sensor fusion pipeline',
     license='Apache-2.0',
     tests_require=['pytest'],
@@ -32,6 +32,8 @@ setup(
             'visual_clarity_node = ugv_fusion.visual_clarity_node:main',
             'dempster_shafer_fusion_node = ugv_fusion.dempster_shafer_fusion_node:main',
             'spatio_temporal_association_node = ugv_fusion.spatio_temporal_association_node:main',
+            # ADDED: Your new experiment control node
+            'experiment_control_node = ugv_fusion.experiment_control_node:main',
         ],
     },
 )
