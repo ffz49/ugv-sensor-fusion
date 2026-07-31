@@ -1,5 +1,6 @@
 import rclpy
 from rclpy.node import Node
+from std_msgs.msg import Float32MultiArray
 from nav_msgs.msg import OccupancyGrid
 from std_msgs.msg import Float32
 from visualization_msgs.msg import Marker  # <-- Added for RViz Text
@@ -8,6 +9,9 @@ import cupy as cp  # <-- GPU Acceleration Library
 class DempsterShaferFusionNode(Node):
     def __init__(self):
         super().__init__('dempster_shafer_fusion_node')
+
+        # Publisher for live thesis graphs
+        self.weight_pub = self.create_publisher(Float32MultiArray, '/fusion/ds_weights', 10)
 
         self.visual_grid = None
         self.radar_grid = None
@@ -81,6 +85,11 @@ class DempsterShaferFusionNode(Node):
         
         self.pub_fused_grid.publish(fused_msg)
         
+        weight_msg = Float32MultiArray()
+        # Publish the current Alpha (Camera) and Beta (Radar) certainty weights
+        weight_msg.data = [float(self.alpha), float(self.beta)]
+        self.weight_pub.publish(weight_msg)
+
         # 7. Publish RViz Status Text
         self.publish_status_marker()
 

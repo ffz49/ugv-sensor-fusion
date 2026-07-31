@@ -14,8 +14,9 @@ def generate_launch_description():
         ),
         launch_arguments={
             'camera_model': 'zedx',
-            'publish_tf': 'false',        # Forces ZED to use our TF tree
-            'publish_map_tf': 'false'     # Forces ZED to use our TF tree
+            'publish_tf': 'false',                # Revert to false (Fixes the TF tree conflict)
+            'publish_map_tf': 'true',             # Keep true (Provides the SLAM map for Nav2)
+            'use_intra_process_comms': 'false'    # Disables C++ zero-copy (Fixes the Python crash)
         }.items()
     )
 
