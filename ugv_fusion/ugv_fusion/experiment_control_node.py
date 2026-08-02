@@ -66,12 +66,19 @@ def main(args=None):
     rclpy.init(args=args)
     node = ExperimentControlNode()
     
-    # Standby Mode blocks execution
-    print("\n" + "="*50)
-    input("PRESS ENTER TO SEND NAV2 GOAL AND ENABLE DRIVING...")
-    print("="*50 + "\n")
+    node.get_logger().info("Experiment Control Node started. Waiting for Nav2...")
     
-    # Send the navigation goal to Nav2
+    # Wait until Nav2 is online
+    node.nav_client.wait_for_server()
+    node.get_logger().info("Nav2 is ONLINE. Starting 5-second countdown to launch...")
+    
+    # Non-blocking 5 second countdown!
+    import time
+    for i in range(5, 0, -1):
+        node.get_logger().info(f"Launching in {i}...")
+        time.sleep(1)
+        
+    node.get_logger().info("GO!")
     node.send_goal()
     
     rclpy.spin(node)

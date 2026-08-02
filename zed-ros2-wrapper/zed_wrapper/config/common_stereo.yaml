@@ -109,7 +109,7 @@
             pos_tracking_enabled: true # True to enable positional tracking from start
             pos_tracking_mode: 'AUTO' # 'AUTO' uses the SDK default; also supports 'GEN_1', 'GEN_3'
             imu_fusion: true # enable/disable IMU fusion. When set to false, only the optical odometry will be used.
-            publish_tf: true # [overwritten by launch file options] publish `odom -> camera_link` TF
+            publish_tf: false # [overwritten by launch file options] publish `odom -> camera_link` TF
             publish_map_tf: true # [overwritten by launch file options] publish `map -> odom` TF
             map_frame: 'map'
             odometry_frame: 'odom'

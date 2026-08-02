@@ -3,27 +3,25 @@ global_costmap:
     ros__parameters:
       update_frequency: 10.0
       publish_frequency: 10.0
-      global_frame: map
+      global_frame: odom
       robot_base_frame: base_link
       use_sim_time: false
+      rolling_window: true
+      width: 30
+      height: 30
+      resolution: 0.05
       footprint: "[ [0.525, 0.38], [0.525, -0.38], [-0.525, -0.38], [-0.525, 0.38] ]"
-      plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
-      
-      static_layer:
-        plugin: "nav2_costmap_2d::StaticLayer"
-        map_subscribe_transient_local: false
-        map_topic: "/zed/zed_node/map"
-        subscribe_to_updates: true
+      plugins: ["obstacle_layer", "inflation_layer"]
 
       obstacle_layer:
-        plugin: "nav2_costmap_2d::StaticLayer" 
+        plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: false
-        map_topic: "/planning/fused_bev_grid" 
+        map_topic: "/planning/fused_bev_grid"
         subscribe_to_updates: true
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.5 
+        inflation_radius: 0.5
         cost_scaling_factor: 3.0
 
 local_costmap:
@@ -42,9 +40,9 @@ local_costmap:
       plugins: ["obstacle_layer", "inflation_layer"]
 
       obstacle_layer:
-        plugin: "nav2_costmap_2d::StaticLayer" 
+        plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: false
-        map_topic: "/planning/fused_bev_grid" 
+        map_topic: "/planning/fused_bev_grid"
         subscribe_to_updates: true
 
       inflation_layer:
@@ -54,26 +52,41 @@ local_costmap:
 
 controller_server:
   ros__parameters:
-    controller_frequency: 10.0    
+    controller_frequency: 10.0
     controller_plugins: ["FollowPath"]
-    
+
     FollowPath:
       plugin: "nav2_mppi_controller::MPPIController"
       time_steps: 40
       model_dt: 0.1
       batch_size: 2000
-      
-      vx_max: 1.0       
-      vx_min: -0.5      
-      vy_max: 0.0       
-      wz_max: 1.0       
-      
+
+      vx_max: 1.0
+      vx_min: -0.5
+      vy_max: 0.0
+      wz_max: 1.0
+
       vx_std: 0.2
-      vy_std: 0.0       
+      vy_std: 0.0
       wz_std: 0.4
-      
+
       critics: ["ConstraintCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "ObstaclesCritic"]
-      
+
       ObstaclesCritic:
-        cost_weight: 5.0    
+        cost_weight: 5.0
         repulsion_weight: 1.5
+
+bt_navigator:
+  ros__parameters:
+    global_frame: odom
+    enable_recovery: true #false for not doing evasive maneuvers by itself
+
+planner_server:
+  ros__parameters:
+    expected_planner_frequency: 10.0
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_navfn_planner/NavfnPlanner"
+      use_astar: true
+      allow_unknown: true
+      tolerance: 0.5
