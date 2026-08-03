@@ -22,7 +22,10 @@ def generate_launch_description():
         # 1. AgileX UGV Driver
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(bunker_launch_file),
-            launch_arguments={'port_name': 'can1'}.items()
+            launch_arguments={
+                'port_name': 'can1',
+                'odom_frame_name': 'wheel_odom'
+            }.items()
         ),
         
         # 2. Nav2 Stack (Loads your MPPI Costmap YAML)

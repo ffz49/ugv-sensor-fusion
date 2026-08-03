@@ -1,6 +1,7 @@
 global_costmap:
   global_costmap:
     ros__parameters:
+      transform_tolerance: 1.0
       update_frequency: 10.0
       publish_frequency: 10.0
       global_frame: odom
@@ -27,6 +28,7 @@ global_costmap:
 local_costmap:
   local_costmap:
     ros__parameters:
+      transform_tolerance: 1.0
       update_frequency: 10.0
       publish_frequency: 10.0
       global_frame: odom
@@ -83,6 +85,7 @@ bt_navigator:
 
 planner_server:
   ros__parameters:
+    transform_tolerance: 1.0
     expected_planner_frequency: 10.0
     planner_plugins: ["GridBased"]
     GridBased:
