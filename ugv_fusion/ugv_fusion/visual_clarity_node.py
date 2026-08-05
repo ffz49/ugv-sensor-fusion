@@ -1,5 +1,6 @@
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image
 from std_msgs.msg import Float32
 import message_filters
@@ -9,8 +10,8 @@ import numpy as np
 class VisualClarityNode(Node):
     def __init__(self):
         super().__init__('visual_clarity_node')
-        self.sub_rgb = Subscriber(self, Image, '/zed/zed_node/rgb/color/rect/image')
-        self.sub_depth = Subscriber(self, Image, '/zed/zed_node/depth/depth_registered')
+        self.sub_rgb = Subscriber(self, Image, '/zed/zed_node/rgb/color/rect/image', qos_profile=qos_profile_sensor_data)
+        self.sub_depth = Subscriber(self, Image, '/zed/zed_node/depth/depth_registered', qos_profile=qos_profile_sensor_data)
         self.sync = ApproximateTimeSynchronizer([self.sub_rgb, self.sub_depth], queue_size=10, slop=0.1)
         self.sync.registerCallback(self.sync_callback)
         self.pub_clarity = self.create_publisher(Float32, '/environment/visual_clarity', 10)

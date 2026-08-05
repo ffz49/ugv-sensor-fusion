@@ -2,6 +2,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import PointCloud2
 from nav_msgs.msg import Odometry
+from rclpy.qos import qos_profile_sensor_data
 from visualization_msgs.msg import Marker, MarkerArray
 import sensor_msgs_py.point_cloud2 as pc2
 import numpy as np
@@ -10,7 +11,8 @@ from sklearn.cluster import DBSCAN
 class RadarObjectNode(Node):
     def __init__(self):
         super().__init__('radar_object_node')
-        self.sub_radar = self.create_subscription(PointCloud2, '/smart_radar/port_targets_0', self.radar_callback, 10)
+        self.sub_radar = self.create_subscription(
+            PointCloud2, '/smart_radar/port_targets_0', self.radar_callback, qos_profile_sensor_data)
         self.sub_odom = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
         self.pub_markers = self.create_publisher(MarkerArray, '/planning/radar_bounding_boxes', 10)
         self.ugv_velocity = 0.0

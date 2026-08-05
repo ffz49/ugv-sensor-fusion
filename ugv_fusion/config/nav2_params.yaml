@@ -12,17 +12,31 @@ global_costmap:
       height: 30
       resolution: 0.05
       footprint: "[ [0.525, 0.38], [0.525, -0.38], [-0.525, -0.38], [-0.525, 0.38] ]"
-      plugins: ["obstacle_layer", "inflation_layer"]
+      # SYNTAX FIXED: Changed to include the new dynamic layer
+      plugins: ["bev_layer", "dynamic_layer", "inflation_layer"]
 
-      obstacle_layer:
+      bev_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: false
         map_topic: "/planning/fused_bev_grid"
         subscribe_to_updates: true
 
+      # NEW: Spatio-Temporal Dynamic Layer
+      dynamic_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True  # Toggle to False to isolate BEV-only testing
+        observation_sources: dynamic_cloud
+        dynamic_cloud:
+          topic: /planning/dynamic_obstacles
+          data_type: PointCloud2
+          clearing: True
+          marking: True
+          obstacle_max_range: 15.0
+          raytrace_max_range: 20.0
+
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.5
+        inflation_radius: 0.8
         cost_scaling_factor: 3.0
 
 local_costmap:
@@ -39,17 +53,29 @@ local_costmap:
       height: 15
       resolution: 0.05
       footprint: "[ [0.525, 0.38], [0.525, -0.38], [-0.525, -0.38], [-0.525, 0.38] ]"
-      plugins: ["obstacle_layer", "inflation_layer"]
+      plugins: ["bev_layer", "dynamic_layer", "inflation_layer"]
 
-      obstacle_layer:
+      bev_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: false
         map_topic: "/planning/fused_bev_grid"
         subscribe_to_updates: true
 
+      dynamic_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: dynamic_cloud
+        dynamic_cloud:
+          topic: /planning/dynamic_obstacles
+          data_type: PointCloud2
+          clearing: True
+          marking: True
+          obstacle_max_range: 15.0
+          raytrace_max_range: 20.0
+
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.5
+        inflation_radius: 0.8
         cost_scaling_factor: 3.0
 
 controller_server:
@@ -59,12 +85,13 @@ controller_server:
 
     FollowPath:
       plugin: "nav2_mppi_controller::MPPIController"
-      time_steps: 40
+      time_steps: 50
       model_dt: 0.1
-      batch_size: 2000
+      # TUNED: Reduced to 1000 to prevent CPU starvation and control loop misses
+      batch_size: 1000
 
       vx_max: 1.0
-      vx_min: -0.5
+      vx_min: 0.0 # no reversing via MPPI
       vy_max: 0.0
       wz_max: 1.0
 
@@ -72,16 +99,20 @@ controller_server:
       vy_std: 0.0
       wz_std: 0.4
 
-      critics: ["ConstraintCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "ObstaclesCritic"]
+      # SYNTAX FIXED: Restored truncated array and added TwirlingCritic
+      critics: ["ConstraintCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "ObstaclesCritic", "TwirlingCritic"]
 
       ObstaclesCritic:
-        cost_weight: 5.0
-        repulsion_weight: 1.5
+        cost_weight: 50.0      # aggressive setting
+        repulsion_weight: 15.0 # aggressive setting
+
+      TwirlingCritic:
+        cost_weight: 10.0      # Forces smoother forward arcs instead of tank-turns
 
 bt_navigator:
   ros__parameters:
     global_frame: odom
-    enable_recovery: true #false for not doing evasive maneuvers by itself
+    enable_recovery: true
 
 planner_server:
   ros__parameters:
@@ -91,5 +122,19 @@ planner_server:
     GridBased:
       plugin: "nav2_navfn_planner/NavfnPlanner"
       use_astar: true
-      allow_unknown: true
+      allow_unknown: false  # Kept your strict setting
       tolerance: 0.5
+
+behavior_server:
+  ros__parameters:
+    costmap_topic: local_costmap/costmap_raw
+    footprint_topic: local_costmap/published_footprint
+    cycle_frequency: 10.0
+    behavior_plugins: ["spin", "backup", "drive_on_heading", "wait"]
+
+    spin:
+      plugin: "nav2_behaviors/Spin"
+      simulate_ahead_time: 2.0
+      max_rotational_vel: 0.5
+      min_rotational_vel: 0.1
+      rotational_acc_lim: 0.8

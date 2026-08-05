@@ -24,7 +24,7 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(bunker_launch_file),
             launch_arguments={
                 'port_name': 'can1',
-                'odom_frame_name': 'wheel_odom'
+                'odom_frame_name': 'odom'
             }.items()
         ),
         

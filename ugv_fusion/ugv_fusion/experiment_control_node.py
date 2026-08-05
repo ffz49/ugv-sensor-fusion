@@ -3,6 +3,7 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 from nav2_msgs.action import NavigateThroughPoses
 from geometry_msgs.msg import PoseStamped
+from action_msgs.msg import GoalStatus
 import tf2_ros
 import sys
 import math
@@ -84,8 +85,9 @@ class ExperimentControlNode(Node):
         # Format: create_waypoint(Forward_m, Left/Right_m, Turn_Radians, rx, ry, ryaw)
         
         wp1 = self.create_waypoint(10.0, 0.0, 0.0, rx, ry, ryaw)          # Go straight 10m
-        wp2 = self.create_waypoint(10.0, 5.0, math.pi/2, rx, ry, ryaw)    # Turn 90 deg left, go 5m
-        
+        #wp2 = self.create_waypoint(10.0, 5.0, math.pi/2, rx, ry, ryaw)    # Turn 90 deg left, go 5m
+        wp2 = self.create_waypoint(8.0, 0.0, 0.0, rx, ry, ryaw)          # Continue straight to 8m
+
         # -------------------------------------
 
         goal_msg = NavigateThroughPoses.Goal()
@@ -106,7 +108,13 @@ class ExperimentControlNode(Node):
         self.get_result_future.add_done_callback(self.get_result_callback)
 
     def get_result_callback(self, future):
-        self.get_logger().info("Patrol Complete. All waypoints reached.")
+        status = future.result().status
+        
+        if status == GoalStatus.STATUS_SUCCEEDED:
+            self.get_logger().info("✅ Patrol Complete. All waypoints reached.")
+        else:
+            self.get_logger().error("🛑 NO WAY AROUND! The path is completely blocked. Stopping the UGV.")
+            
         sys.exit(0)
 
 def main(args=None):

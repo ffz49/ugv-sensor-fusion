@@ -2,6 +2,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import PointCloud2
 from nav_msgs.msg import OccupancyGrid
+from rclpy.qos import qos_profile_sensor_data
 import sensor_msgs_py.point_cloud2 as pc2
 import numpy as np
 import tf2_ros
@@ -24,7 +25,7 @@ class RadarBEVNode(Node):
 
         # Subscriber & Publisher
         self.sub_radar = self.create_subscription(
-            PointCloud2, '/smart_radar/port_targets_0', self.radar_callback, 10)
+            PointCloud2, '/smart_radar/port_targets_0', self.radar_callback, qos_profile_sensor_data)
         self.pub_grid = self.create_publisher(
             OccupancyGrid, '/planning/radar_bev_grid', 10)
             
@@ -39,7 +40,7 @@ class RadarBEVNode(Node):
             # 2. Mathematically rotate the 3D points so they are level with the ground
             level_msg = do_transform_cloud(msg, transform)
         except Exception as e:
-            # If the launch file isn't running yet, skip this frame
+            self.get_logger().warn(f"Radar TF Error: {e}", throttle_duration_sec=2.0)
             return
 
         # 3. Extract the level X, Y, Z coordinates

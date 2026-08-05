@@ -80,8 +80,8 @@ class DempsterShaferFusionNode(Node):
         fused_msg = OccupancyGrid()
         fused_msg.header.stamp = self.get_clock().now().to_msg()
         fused_msg.header.frame_id = 'base_link'
-        fused_msg.info = self.visual_grid.info  
-        fused_msg.data = fused_array_cpu.tolist()
+        fused_msg.info = self.visual_grid.info
+        fused_msg.data = fused_array_cpu.flatten().tolist()
         
         self.pub_fused_grid.publish(fused_msg)
         

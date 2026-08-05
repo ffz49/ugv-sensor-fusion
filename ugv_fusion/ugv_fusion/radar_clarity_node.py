@@ -1,5 +1,6 @@
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import PointCloud2
 from std_msgs.msg import Float32
 import sensor_msgs_py.point_cloud2 as pc2
@@ -11,7 +12,7 @@ class RadarClarityNode(Node):
         
         # Subscribe to the Smartmicro Radar point cloud
         self.sub_radar = self.create_subscription(
-            PointCloud2, '/smart_radar/port_targets_0', self.radar_callback, 10)
+            PointCloud2, '/smart_radar/port_targets_0', self.radar_callback, qos_profile_sensor_data)
             
         # Publish the Beta Weight (0.0 = Blind, 1.0 = Perfect Clarity)
         self.pub_beta = self.create_publisher(Float32, '/environment/radar_beta', 10)

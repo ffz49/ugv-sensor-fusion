@@ -1,15 +1,16 @@
 import rclpy
 from rclpy.node import Node
 from visualization_msgs.msg import Marker, MarkerArray
-
-# THE CRITICAL FIX: Properly importing from zed_msgs, not zed_interfaces
 from zed_msgs.msg import ObjectsStamped 
-
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 import tf2_ros
 import tf2_geometry_msgs
 from geometry_msgs.msg import PointStamped
+from sensor_msgs.msg import PointCloud2
+from std_msgs.msg import Header
+import sensor_msgs_py.point_cloud2 as pc2
+
 
 class SpatioTemporalAssociationNode(Node):
     def __init__(self):
@@ -22,6 +23,7 @@ class SpatioTemporalAssociationNode(Node):
         
         # This is the publisher that disappeared from RViz because the node crashed
         self.pub_diagnostic = self.create_publisher(MarkerArray, '/planning/diagnostic_fusion_markers', 10)
+        self.pub_dynamic_obs = self.create_publisher(PointCloud2, '/planning/dynamic_obstacles', 10)
         
         self.latest_camera_boxes = []
         self.latest_radar_boxes = []
@@ -53,6 +55,10 @@ class SpatioTemporalAssociationNode(Node):
     def camera_callback(self, msg):
         self.latest_camera_boxes = []
         for obj in msg.objects:
+            # Prevent NaN coordinates from poisoning the matrix
+            if np.isnan(obj.position[0]):
+                continue
+                
             pt = self.transform_point(obj.position[0], obj.position[1], obj.position[2], msg.header.frame_id)
             if pt:
                 self.latest_camera_boxes.append([pt[0], pt[1], pt[2], obj.label, obj.label_id])
@@ -99,6 +105,7 @@ class SpatioTemporalAssociationNode(Node):
             diagnostic_markers.markers.extend(markers)
             m_id += 1
 
+        cloud_points = []
         # Execute Fusion
         if len(self.latest_camera_boxes) > 0 and len(self.latest_radar_boxes) > 0:
             
@@ -116,7 +123,9 @@ class SpatioTemporalAssociationNode(Node):
                     fused_x = (cam[0] + rad[0]) / 2.0
                     fused_y = (cam[1] + rad[1]) / 2.0
                     fused_z = (cam[2] + rad[2]) / 2.0
-                    
+
+                    cloud_points.append([fused_x, fused_y, fused_z])
+
                     fused_text = f"FUSED: {cam[3]}\n{rad[3]}"
                     
                     # Draw Fused Object (Green) - Text stacked at 1.2m
@@ -125,6 +134,13 @@ class SpatioTemporalAssociationNode(Node):
                     m_id += 1
 
         self.pub_diagnostic.publish(diagnostic_markers)
+
+        Publish the navigable point cloud
+        header = Header()
+        header.stamp = self.get_clock().now().to_msg()
+        header.frame_id = 'base_link'
+        pc_msg = pc2.create_cloud_xyz32(header, cloud_points)
+        self.pub_dynamic_obs.publish(pc_msg)
 
 def main(args=None):
     rclpy.init(args=args)

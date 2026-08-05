@@ -3,6 +3,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import PointCloud2
 from nav_msgs.msg import OccupancyGrid
 import sensor_msgs_py.point_cloud2 as pc2
+from rclpy.qos import qos_profile_sensor_data
 import tf2_ros
 from tf2_sensor_msgs.tf2_sensor_msgs import do_transform_cloud
 import numpy as np
@@ -28,7 +29,7 @@ class VisualBEVNode(Node):
 
         # Publishers & Subscribers
         self.sub_cloud = self.create_subscription(
-            PointCloud2, '/zed/zed_node/point_cloud/cloud_registered', self.cloud_callback, 1)
+            PointCloud2, '/zed/zed_node/point_cloud/cloud_registered', self.cloud_callback, qos_profile_sensor_data)
         self.pub_grid = self.create_publisher(
             OccupancyGrid, '/planning/visual_bev_grid', 10)
 
