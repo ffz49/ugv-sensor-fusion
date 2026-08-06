@@ -17,7 +17,8 @@ class VisualBEVNode(Node):
         self.resolution = 0.05  # 5 cm per cell
         self.grid_size_x = 50.0  # meters forward
         self.grid_size_y = 30.0  # meters left/right (total)
-        self.width = int(self.grid_size_x / self.resolution)
+        self.offset_x = -5.0     # Start grid 5 meters behind the robot
+        self.width = int((self.grid_size_x - self.offset_x) / self.resolution)
         self.height = int(self.grid_size_y / self.resolution)
 
         # Traversability Thresholds
@@ -62,7 +63,7 @@ class VisualBEVNode(Node):
         points = cp.asarray(cpu_points) # <-- Data is now on the GPU
 
         # Filter out points that are too high (sky) or outside the grid bounds using GPU parallelization
-        valid_idx = (points[:, 0] >= 0) & (points[:, 0] < self.grid_size_x) & \
+        valid_idx = (points[:, 0] >= self.offset_x) & (points[:, 0] < self.grid_size_x) & \
                     (points[:, 1] >= -self.grid_size_y / 2) & (points[:, 1] < self.grid_size_y / 2) & \
                     (points[:, 2] < 2.0)
         points = points[valid_idx]
@@ -71,7 +72,7 @@ class VisualBEVNode(Node):
             return
 
         # Map X, Y coordinates to grid cell indices
-        x_indices = (points[:, 0] / self.resolution).astype(cp.int32)
+        x_indices = ((points[:, 0] - self.offset_x) / self.resolution).astype(cp.int32)
         y_indices = ((points[:, 1] + (self.grid_size_y / 2)) / self.resolution).astype(cp.int32)
 
         # Fast 2D height mapping
@@ -87,13 +88,15 @@ class VisualBEVNode(Node):
         # 3. New obstacles reset the TTL counter to 5 frames (~0.5 seconds at 10Hz)
         self.ttl_grid[x_indices[obs_mask], y_indices[obs_mask]] = 5
 
-        # 4. Construct the ROS-ready frame from the persistent TTL grid
-        grid_data = cp.full((self.width, self.height), -1, dtype=cp.int8)
-        grid_data[self.ttl_grid == 0] = 0    # Free space
+        # 4. Construct the ROS-ready frame (defaulting completely to 0 / Free Space)
+        grid_data = cp.zeros((self.width, self.height), dtype=cp.int8)
         grid_data[self.ttl_grid > 0] = 100   # Persisted Obstacles
 
-        # Pull the final calculated grid back to the CPU for ROS publishing
-        cpu_grid_data = cp.asnumpy(grid_data)
+        # 5. TRANSPOSE the grid to fix the 90-degree rotation
+        aligned_grid = grid_data.T
+
+        # 6. Pull the final aligned grid back to the CPU for ROS publishing
+        cpu_grid_data = cp.asnumpy(aligned_grid)
 
         self.publish_grid(cpu_grid_data, msg.header.stamp)
 
@@ -104,9 +107,9 @@ class VisualBEVNode(Node):
 
         # Meta Data
         grid_msg.info.resolution = self.resolution
-        grid_msg.info.width = self.height
-        grid_msg.info.height = self.width
-        grid_msg.info.origin.position.x = 0.0
+        grid_msg.info.width = self.width
+        grid_msg.info.height = self.height
+        grid_msg.info.origin.position.x = self.offset_x
         grid_msg.info.origin.position.y = -self.grid_size_y / 2
         grid_msg.info.origin.position.z = 0.0
 

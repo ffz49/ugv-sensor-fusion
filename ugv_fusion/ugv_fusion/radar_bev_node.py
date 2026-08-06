@@ -22,7 +22,8 @@ class RadarBEVNode(Node):
         self.resolution = 0.05  # 10 cm per cell
         self.grid_size_x = 50.0  # meters forward
         self.grid_size_y = 30.0  # meters left/right
-        self.width = int(self.grid_size_x / self.resolution)
+        self.offset_x = -5.0     # Start grid 5 meters behind the robot
+        self.width = int((self.grid_size_x - self.offset_x) / self.resolution)
         self.height = int(self.grid_size_y / self.resolution)
         
         # TF2 Setup: We need this to rotate the tilted points to the flat ground
@@ -65,10 +66,10 @@ class RadarBEVNode(Node):
             return
             
         # 4. Filter bounds and weak organic returns (RCS > 5.0 dBsm)
-        valid_idx = (points[:, 0] >= 0) & (points[:, 0] < self.grid_size_x) & \
+        valid_idx = (points[:, 0] >= self.offset_x) & (points[:, 0] < self.grid_size_x) & \
                     (points[:, 1] >= -self.grid_size_y / 2) & (points[:, 1] < self.grid_size_y / 2) & \
                     (points[:, 2] > 0.10) & (points[:, 2] < 2.0) & \
-                    (points[:, 3] > 5.0)  
+                    (points[:, 3] > 5.0)
                     
         points = points[valid_idx]
 
@@ -89,7 +90,7 @@ class RadarBEVNode(Node):
                 speed_splat = int(abs(v_abs) * 0.5) 
                 current_splat = min(base_splat + speed_splat, 6) # Cap max radius
                 
-                grid_x = int(x / self.resolution)
+                grid_x = int((x - self.offset_x) / self.resolution)
                 grid_y = int((y + (self.grid_size_y / 2)) / self.resolution)
                 
                 # Apply footprint to the persistence grid
@@ -99,12 +100,18 @@ class RadarBEVNode(Node):
                         ny = np.clip(grid_y + dy, 0, self.height - 1)
                         self.ttl_grid[nx, ny] = 5  # Persist for 5 frames
 
-        # 7. Construct final OccupancyGrid: Unknown (-1) where TTL is 0, Occupied (100) where TTL > 0
-        grid_data = np.full((self.width, self.height), -1, dtype=np.int8)
+        # 1. Declare empty space explicitly as FREE (0) instead of Unknown (-1)
+        grid_data = np.zeros((self.width, self.height), dtype=np.int8)
+        
+        # (Your radar/visual obstacle logic stays the same)
         grid_data[self.ttl_grid > 0] = 100
 
-        # 8. Publish the grid natively in the flat base_link frame
-        self.publish_grid(grid_data, level_msg.header.stamp, 'base_link')
+        # 2. TRANSPOSE the grid (.T) before publishing!
+        # This fixes the 90-degree rotation so ROS reads X and Y correctly.
+        aligned_grid = grid_data.T
+
+        # 3. Publish the aligned grid
+        self.publish_grid(aligned_grid, level_msg.header.stamp, 'base_link')
 
     def publish_grid(self, grid_data, stamp, frame_id):
         grid_msg = OccupancyGrid()
@@ -112,9 +119,9 @@ class RadarBEVNode(Node):
         grid_msg.header.frame_id = frame_id
         
         grid_msg.info.resolution = self.resolution
-        grid_msg.info.width = self.height
-        grid_msg.info.height = self.width
-        grid_msg.info.origin.position.x = 0.0
+        grid_msg.info.width = self.width
+        grid_msg.info.height = self.height
+        grid_msg.info.origin.position.x = self.offset_x
         grid_msg.info.origin.position.y = -self.grid_size_y / 2
         grid_msg.info.origin.position.z = 0.0
         
