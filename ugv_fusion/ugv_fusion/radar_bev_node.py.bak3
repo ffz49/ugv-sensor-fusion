@@ -63,13 +63,6 @@ class RadarBEVNode(Node):
         # Persistence held in the ODOM frame -> no ghosting/smearing as the UGV drives.
         self.declare_parameter('persistence_sec', 0.5)
         self.declare_parameter('angular_beam_deg', 0.5)
-        # --- Vegetation discrimination (high grass experiment) ---
-        # Hard obstacles (rock/metal) return far more energy than vegetation.
-        # Above hard_rcs_min -> OCCUPIED. Between soft_rcs_min and hard_rcs_min
-        # -> a return exists but is penetrable (grass) -> FREE.
-        self.declare_parameter('vegetation_mode', False)
-        self.declare_parameter('hard_rcs_min', 10.0)
-        self.declare_parameter('soft_rcs_min', -5.0)
 
         gp = self.get_parameter
         self.resolution = gp('resolution').value
@@ -83,9 +76,6 @@ class RadarBEVNode(Node):
         self.rcs_taper_range = gp('rcs_taper_range').value
         self.persistence_sec = gp('persistence_sec').value
         self.beam_rad = np.deg2rad(gp('angular_beam_deg').value)
-        self.vegetation_mode = gp('vegetation_mode').value
-        self.hard_rcs_min = gp('hard_rcs_min').value
-        self.soft_rcs_min = gp('soft_rcs_min').value
 
         self.width = int((self.grid_size_x - self.offset_x) / self.resolution)
         self.height = int(self.grid_size_y / self.resolution)
@@ -142,13 +132,8 @@ class RadarBEVNode(Node):
         in_grid = (x >= self.offset_x) & (x < self.grid_size_x) & \
                   (y >= -self.grid_size_y / 2) & (y < self.grid_size_y / 2)
 
-        if self.vegetation_mode:
-            # Keep LOW-RCS returns too: they are the evidence that a cell is
-            # grass (traversable) rather than unobserved.
-            keep = z_ok & in_grid & (rcs > self.soft_rcs_min)
-        else:
-            keep = z_ok & rcs_ok & in_grid
-        pts_bl = np.column_stack([pts[keep], rcs[keep]]).astype(np.float32)
+        keep = z_ok & rcs_ok & in_grid
+        pts_bl = pts[keep]
 
         # Store detections in ODOM so persistence does not smear while driving.
         now = self.get_clock().now().nanoseconds * 1e-9
@@ -156,8 +141,7 @@ class RadarBEVNode(Node):
             tf_od = self.tf_buffer.lookup_transform('odom', 'base_link', rclpy.time.Time())
             Mo = transform_to_matrix(tf_od)
             if pts_bl.shape[0] > 0:
-                xyz_odom = pts_bl[:, :3] @ Mo[:3, :3].T + Mo[:3, 3]
-                self.history.append((now, np.column_stack([xyz_odom, pts_bl[:, 3]])))
+                self.history.append((now, pts_bl @ Mo[:3, :3].T + Mo[:3, 3]))
             self.history = [(t, p) for (t, p) in self.history
                             if now - t <= self.persistence_sec]
             self.odom_available = True
@@ -175,7 +159,7 @@ class RadarBEVNode(Node):
 
     def gather_base_link_points(self):
         if not self.history:
-            return np.empty((0, 4), np.float32)
+            return np.empty((0, 3), np.float32)
         allpts = np.concatenate([p for (_, p) in self.history], axis=0)
         if not self.odom_available:
             return allpts
@@ -183,10 +167,9 @@ class RadarBEVNode(Node):
             tf_od = self.tf_buffer.lookup_transform('odom', 'base_link', rclpy.time.Time())
             Mo = transform_to_matrix(tf_od)
             R, t = Mo[:3, :3], Mo[:3, 3]
-            xyz = (allpts[:, :3] - t) @ R
-            return np.column_stack([xyz, allpts[:, 3]])      # inverse transform: odom -> base_link
+            return (allpts - t) @ R      # inverse transform: odom -> base_link
         except Exception:
-            return np.empty((0, 4), np.float32)
+            return np.empty((0, 3), np.float32)
 
     def publish_from_history(self, stamp):
         # THREE-STATE: radar starts fully UNKNOWN. Absence of a return is NOT
@@ -195,10 +178,10 @@ class RadarBEVNode(Node):
 
         pts = self.gather_base_link_points()
         if pts.shape[0] > 0:
-            x, y, prcs = pts[:, 0], pts[:, 1], pts[:, 3]
+            x, y = pts[:, 0], pts[:, 1]
             inb = (x >= self.offset_x) & (x < self.grid_size_x) & \
                   (y >= -self.grid_size_y / 2) & (y < self.grid_size_y / 2)
-            x, y, prcs = x[inb], y[inb], prcs[inb]
+            x, y = x[inb], y[inb]
             if x.shape[0] > 0:
                 rng = np.sqrt(x * x + y * y)
                 # Cross-range uncertainty grows with distance -> range-scaled splat
@@ -207,31 +190,14 @@ class RadarBEVNode(Node):
                 xi = ((x - self.offset_x) / self.resolution).astype(np.int32)
                 yi = ((y + self.grid_size_y / 2) / self.resolution).astype(np.int32)
                 rmax = int(radius.max())
-                if self.vegetation_mode:
-                    hard = prcs >= self.hard_rcs_min
-                    # Paint soft (vegetation) first, then hard on top so a rock
-                    # inside a grass patch always wins.
-                    for sel, val in ((~hard, FREE), (hard, OCCUPIED)):
-                        if not sel.any():
+                for dx in range(-rmax, rmax + 1):
+                    for dy in range(-rmax, rmax + 1):
+                        m = (np.abs(dx) <= radius) & (np.abs(dy) <= radius)
+                        if not m.any():
                             continue
-                        sxi, syi, srad = xi[sel], yi[sel], radius[sel]
-                        for dx in range(-rmax, rmax + 1):
-                            for dy in range(-rmax, rmax + 1):
-                                m = (np.abs(dx) <= srad) & (np.abs(dy) <= srad)
-                                if not m.any():
-                                    continue
-                                nx = np.clip(sxi[m] + dx, 0, self.width - 1)
-                                ny = np.clip(syi[m] + dy, 0, self.height - 1)
-                                grid[ny * self.width + nx] = val
-                else:
-                    for dx in range(-rmax, rmax + 1):
-                        for dy in range(-rmax, rmax + 1):
-                            m = (np.abs(dx) <= radius) & (np.abs(dy) <= radius)
-                            if not m.any():
-                                continue
-                            nx = np.clip(xi[m] + dx, 0, self.width - 1)
-                            ny = np.clip(yi[m] + dy, 0, self.height - 1)
-                            grid[ny * self.width + nx] = OCCUPIED
+                        nx = np.clip(xi[m] + dx, 0, self.width - 1)
+                        ny = np.clip(yi[m] + dy, 0, self.height - 1)
+                        grid[ny * self.width + nx] = OCCUPIED
 
         g = OccupancyGrid()
         g.header.stamp = stamp

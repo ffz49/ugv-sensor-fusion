@@ -2,10 +2,9 @@ import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import OccupancyGrid
 from std_msgs.msg import Float32, Float32MultiArray, Header
-from sensor_msgs.msg import PointCloud2, PointField, PointField
+from sensor_msgs.msg import PointCloud2, PointField
 from visualization_msgs.msg import Marker
 import sensor_msgs_py.point_cloud2 as pc2
-import array
 import array
 import cupy as cp
 import numpy as np
@@ -39,10 +38,6 @@ class DempsterShaferFusionNode(Node):
         self.pub_status_text = self.create_publisher(Marker, '/planning/fusion_status_text', 10)
         self.pub_latency = self.create_publisher(Float32, '/fusion/latency_ms', 10)
         self.weight_pub = self.create_publisher(Float32MultiArray, '/fusion/ds_weights', 10)
-        # Conflict factor K: camera claims FREE where radar detects OCCUPIED (or
-        # vice versa). This is the evidential disagreement signal.
-        self.conflict_pub = self.create_publisher(Float32MultiArray, '/fusion/conflict_K', 10)
-        self.conflict_grid_pub = self.create_publisher(OccupancyGrid, '/fusion/conflict_grid', 10)
 
         # Fuse on a fixed timer, decoupled from sensor arrival. 10 Hz; tune if needed.
         self.fuse_timer = self.create_timer(0.1, self.fuse_grids)
@@ -126,13 +121,9 @@ class DempsterShaferFusionNode(Node):
         m_fused_free = (m_c_free * m_r_free + m_c_free * m_r_unk + m_c_unk * m_r_free) / denom
 
         # --- Decision: -1 unknown, 0 free, 100 occupied (Nav2 convention, no rescaling) ---
-        # Maximum-belief decision rule. An absolute 0.5 threshold is unusable
-        # here: with a 0.9 base mass a single modality needs alpha > 0.5556 to
-        # ever fire, so obstacles flicker when clarity hovers near that value.
-        min_mass = 0.15
         fused = cp.full(n, -1, dtype=cp.int8)
-        fused[(m_fused_occ >= m_fused_free) & (m_fused_occ > min_mass)] = 100
-        fused[(m_fused_free > m_fused_occ) & (m_fused_free > min_mass)] = 0
+        fused[m_fused_occ > 0.5] = 100
+        fused[(m_fused_free > 0.5) & (m_fused_occ <= 0.5)] = 0
         fused_cpu = cp.asnumpy(fused)
 
         out = OccupancyGrid()
@@ -141,27 +132,6 @@ class DempsterShaferFusionNode(Node):
         out.info = ref.info
         out.data = array.array('b', fused_cpu.astype(np.int8).tobytes())
         self.pub_fused_grid.publish(out)
-
-        # --- Conflict metrics (thesis) ---
-        has_ev = (m_c_occ + m_c_free + m_r_occ + m_r_free) > 0.01
-        n_ev = float(cp.count_nonzero(has_ev))
-        if n_ev > 0:
-            mean_K = float(cp.sum(K * has_ev) / n_ev)
-            max_K = float(cp.max(K))
-            frac_conf = float(cp.count_nonzero((K > 0.05) & has_ev) / n_ev)
-        else:
-            mean_K = max_K = frac_conf = 0.0
-        cmsg = Float32MultiArray()
-        cmsg.data = [mean_K, max_K, frac_conf, n_ev]   # mean, max, conflict fraction, cells with evidence
-        self.conflict_pub.publish(cmsg)
-
-        cgrid = OccupancyGrid()
-        cgrid.header.stamp = now.to_msg()
-        cgrid.header.frame_id = 'base_link'
-        cgrid.info = ref.info
-        cgrid.data = array.array('b', cp.asnumpy(
-            cp.clip(K * 100.0, 0, 100).astype(cp.int8)).tobytes())
-        self.conflict_grid_pub.publish(cgrid)
 
         wmsg = Float32MultiArray()
         wmsg.data = [float(self.alpha), float(self.beta)]

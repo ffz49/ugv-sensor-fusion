@@ -38,7 +38,7 @@ def generate_launch_description():
             '--y', '0.0',          # Centered left/right
             '--z', '0.81',         # Height from ground
             '--roll', '-0.0110',
-            '--pitch', '-0.3309',  # Camera tilts downward
+            '--pitch', '0.3309',  # Camera tilts downward
             '--yaw', '0.0',
             '--frame-id', 'base_link',
             '--child-frame-id', 'zed_camera_link'

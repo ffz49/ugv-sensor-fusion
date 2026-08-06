@@ -1,0 +1,154 @@
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      transform_tolerance: 1.0
+      update_frequency: 2.0        # DOWN from 5.0
+      publish_frequency: 1.0       # DOWN from 2.0
+      global_frame: odom
+      robot_base_frame: base_link
+      use_sim_time: false
+
+      # --- GLOBAL CANVAS (200m x 200m Memory Canvas) ---
+      rolling_window: false       # Fixed canvas in odom frame for spatial memory
+      width: 60                  # meters
+      height: 60                 # meters
+      origin_x: -30.0            # <-- ADD THIS: Shifts map 100m backwards
+      origin_y: -30.0            # <-- ADD THIS: Shifts map 100m to the right
+      resolution: 0.10            # High-precision 5cm grid
+      footprint: "[ [0.525, 0.38], [0.525, -0.38], [-0.525, -0.38], [-0.525, 0.38] ]"
+
+      plugins: ["memory_layer", "inflation_layer"]
+
+      # --- PERMANENT MEMORY LAYER ---
+      memory_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: fused_memory_cloud
+        fused_memory_cloud:
+          topic: /planning/fused_memory_cloud
+          data_type: PointCloud2
+          marking: True
+          clearing: True          # raytrace-clear stale marks; without this the map seals shut
+          obstacle_max_range: 20.0
+          raytrace_max_range: 25.0
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        inflation_radius: 0.80
+        cost_scaling_factor: 3.0
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      transform_tolerance: 1.0
+      update_frequency: 10.0
+      publish_frequency: 10.0
+      global_frame: odom
+      robot_base_frame: base_link
+      use_sim_time: false
+
+      # --- LOCAL REACTIVE WINDOW ---
+      rolling_window: true        # Moves dynamically centered on UGV
+      width: 12                   # 12 meters local window
+      height: 12                  # 12 meters local window
+      resolution: 0.05
+      footprint: "[ [0.525, 0.38], [0.525, -0.38], [-0.525, -0.38], [-0.525, 0.38] ]"
+
+      plugins: ["fused_layer", "dynamic_layer", "inflation_layer"]
+
+      fused_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: fused_cloud
+        fused_cloud:
+          topic: /planning/fused_memory_cloud
+          data_type: PointCloud2
+          marking: True
+          clearing: True
+          max_obstacle_height: 2.0
+          obstacle_max_range: 15.0
+          raytrace_max_range: 20.0
+
+      dynamic_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: dynamic_cloud
+        dynamic_cloud:
+          topic: /planning/dynamic_obstacles
+          data_type: PointCloud2
+          clearing: True          # Clears dynamic objects when they move away
+          marking: True
+          obstacle_max_range: 15.0
+          raytrace_max_range: 20.0
+
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        inflation_radius: 0.80
+        cost_scaling_factor: 3.0
+
+controller_server:
+  ros__parameters:
+    controller_frequency: 10.0
+    footprint: "[ [0.525, 0.38], [0.525, -0.38], [-0.525, -0.38], [-0.525, 0.38] ]"
+    controller_plugins: ["FollowPath"]
+
+    FollowPath:
+      plugin: "nav2_mppi_controller::MPPIController"
+      time_steps: 50             # down from 50
+      model_dt: 0.1
+      batch_size: 1000            # down from 1000
+
+      vx_max: 1.0
+      vx_min: 0.0
+      vy_max: 0.0
+      wz_max: 1.0
+
+      vx_std: 0.2
+      vy_std: 0.0
+      wz_std: 0.4
+
+      # FIXED SYNTAX: Properly formatted list
+      critics: ["ConstraintCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "ObstaclesCritic", "TwirlingCritic"]
+
+      ObstaclesCritic:
+        cost_power: 1
+        repulsion_weight: 1.5
+        critical_weight: 20.0
+        consider_footprint: false
+        collision_cost: 100000.0
+        collision_margin_distance: 0.10
+
+      TwirlingCritic:
+        twirling_cost_power: 1
+        twirling_cost_weight: 10.0
+
+bt_navigator:
+  ros__parameters:
+    global_frame: odom
+    enable_recovery: true
+    bt_loop_duration: 50          # ADD THIS: Allows the tree 50ms (20Hz) instead of forcing 10ms (100Hz)
+
+planner_server:
+  ros__parameters:
+    transform_tolerance: 1.0
+    expected_planner_frequency: 2.0 # DOWN from 10.0 (Crucial for 16M cell maps)
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_navfn_planner/NavfnPlanner"
+      use_astar: true
+      allow_unknown: true         # Critical for exploring unmapped off-road space
+      tolerance: 0.5
+
+behavior_server:
+  ros__parameters:
+    costmap_topic: local_costmap/costmap_raw
+    footprint_topic: local_costmap/published_footprint
+    cycle_frequency: 10.0
+    behavior_plugins: ["spin", "backup", "drive_on_heading", "wait"]
+
+    spin:
+      plugin: "nav2_behaviors/Spin"
+      simulate_ahead_time: 2.0
+      max_rotational_vel: 0.5
+      min_rotational_vel: 0.1
+      rotational_acc_lim: 0.8

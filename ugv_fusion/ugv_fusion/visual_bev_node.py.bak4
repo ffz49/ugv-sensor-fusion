@@ -68,12 +68,6 @@ class VisualBEVNode(Node):
         # TRUE stereo horizon. Must match the ZED 'max depth' setting (currently 15 m).
         # Beyond this the camera has NO evidence and must report UNKNOWN, never FREE.
         self.declare_parameter('camera_max_range', 15.0)
-        # Stereo depth error grows as z^2: sigma = z^2 * sigma_disp / (f * B).
-        # With B=0.12 m and the COMPACT cloud (f~157 px), sigma is ~0.66 m at 5 m
-        # and ~2.6 m at 10 m. A fixed 0.10 m obstacle threshold therefore marks
-        # flat FLOOR as an obstacle at range. Scale the threshold with the error.
-        self.declare_parameter('stereo_err_coeff', 0.020)
-        self.declare_parameter('obstacle_max_range', 10.0)
 
         gp = self.get_parameter
         self.resolution = gp('resolution').value
@@ -83,8 +77,6 @@ class VisualBEVNode(Node):
         self.min_z = gp('min_z').value
         self.max_z = gp('max_z').value
         self.cam_max_range = gp('camera_max_range').value
-        self.stereo_err_coeff = gp('stereo_err_coeff').value
-        self.obs_max_range = gp('obstacle_max_range').value
 
         self.width = int((self.grid_size_x - self.offset_x) / self.resolution)   # X cells
         self.height = int(self.grid_size_y / self.resolution)                    # Y cells
@@ -162,11 +154,8 @@ class VisualBEVNode(Node):
         ok = (fxi >= 0) & (fxi < self.width) & (fyi >= 0) & (fyi < self.height)
         grid[fyi[ok] * self.width + fxi[ok]] = FREE
 
-        rng_kept = cp.sqrt(x * x + y * y)
-        # Range-dependent obstacle threshold from the stereo error model above.
-        min_z_eff = self.min_z + self.stereo_err_coeff * rng_kept * rng_kept
-        ground = z < min_z_eff
-        obstacle = (z >= min_z_eff) & (z <= self.max_z) & (rng_kept <= self.obs_max_range)
+        ground = z < self.min_z
+        obstacle = (z >= self.min_z) & (z <= self.max_z)
 
         grid[flat[ground]] = FREE          # ground observed -> traversable
         grid[flat[obstacle]] = OCCUPIED    # obstacle wins over free (applied second)

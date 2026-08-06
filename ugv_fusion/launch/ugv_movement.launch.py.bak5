@@ -2,6 +2,8 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
+from launch_ros.actions import SetRemap
+from launch.actions import GroupAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -45,12 +47,27 @@ def generate_launch_description():
         enable_dynamic_objects_arg,
         
         # 1. AgileX UGV Driver
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(bunker_launch_file),
-            launch_arguments={
-                'port_name': 'can1',
-                'odom_frame_name': 'odom'
-            }.items()
+        GroupAction([
+            # Bunker now listens on /cmd_vel_bunker; twist_mux owns that topic.
+            SetRemap(src='/cmd_vel', dst='/cmd_vel_bunker'),
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(bunker_launch_file),
+                launch_arguments={
+                    'port_name': 'can1',
+                    'odom_frame_name': 'odom'
+                }.items()
+            ),
+        ]),
+
+        # Arbitrates Nav2 (/cmd_vel, prio 10) vs teleop (/cmd_vel_teleop, prio 100)
+        Node(
+            package='twist_mux',
+            executable='twist_mux',
+            name='twist_mux',
+            output='screen',
+            parameters=[os.path.join(
+                get_package_share_directory('ugv_fusion'), 'config', 'twist_mux.yaml')],
+            remappings=[('cmd_vel_out', '/cmd_vel_bunker')]
         ),
 
         # 2. Nav2 Stack (Loads your DYNAMICALLY REWRITTEN Costmap YAML)

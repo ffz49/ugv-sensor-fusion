@@ -22,7 +22,10 @@ def generate_launch_description():
 
         # Highway 1: Static BEV Evidential Pipeline (ALWAYS ON)
         Node(package=package_name, executable='visual_bev_node', name='visual_bev_node', output='screen'),
-        Node(package=package_name, executable='radar_bev_node', name='radar_bev_node', output='screen'),
+        Node(package=package_name, executable='radar_bev_node', name='radar_bev_node', output='screen',
+             parameters=[{'vegetation_mode': False,
+                          'hard_rcs_min': 10.0,
+                          'soft_rcs_min': -5.0}]),
         Node(package=package_name, executable='radar_clarity_node', name='radar_clarity_node', output='screen'),
         Node(package=package_name, executable='visual_clarity_node', name='visual_clarity_node', output='screen'),
         Node(package=package_name, executable='dempster_shafer_fusion_node', name='dempster_shafer_fusion_node', output='screen'),

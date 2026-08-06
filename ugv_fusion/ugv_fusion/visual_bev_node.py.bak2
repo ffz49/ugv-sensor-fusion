@@ -1,4 +1,3 @@
-import array
 import numpy as np
 import cupy as cp
 import rclpy
@@ -59,7 +58,7 @@ class VisualBEVNode(Node):
     def __init__(self):
         super().__init__('visual_bev_node')
 
-        self.declare_parameter('resolution', 0.10)
+        self.declare_parameter('resolution', 0.05)
         self.declare_parameter('grid_size_x', 50.0)
         self.declare_parameter('grid_size_y', 30.0)
         self.declare_parameter('offset_x', -5.0)
@@ -68,12 +67,6 @@ class VisualBEVNode(Node):
         # TRUE stereo horizon. Must match the ZED 'max depth' setting (currently 15 m).
         # Beyond this the camera has NO evidence and must report UNKNOWN, never FREE.
         self.declare_parameter('camera_max_range', 15.0)
-        # Stereo depth error grows as z^2: sigma = z^2 * sigma_disp / (f * B).
-        # With B=0.12 m and the COMPACT cloud (f~157 px), sigma is ~0.66 m at 5 m
-        # and ~2.6 m at 10 m. A fixed 0.10 m obstacle threshold therefore marks
-        # flat FLOOR as an obstacle at range. Scale the threshold with the error.
-        self.declare_parameter('stereo_err_coeff', 0.020)
-        self.declare_parameter('obstacle_max_range', 10.0)
 
         gp = self.get_parameter
         self.resolution = gp('resolution').value
@@ -83,8 +76,6 @@ class VisualBEVNode(Node):
         self.min_z = gp('min_z').value
         self.max_z = gp('max_z').value
         self.cam_max_range = gp('camera_max_range').value
-        self.stereo_err_coeff = gp('stereo_err_coeff').value
-        self.obs_max_range = gp('obstacle_max_range').value
 
         self.width = int((self.grid_size_x - self.offset_x) / self.resolution)   # X cells
         self.height = int(self.grid_size_y / self.resolution)                    # Y cells
@@ -142,31 +133,8 @@ class VisualBEVNode(Node):
         # THREE-STATE: start UNKNOWN. Only cells with actual returns get asserted.
         grid = cp.full(self.width * self.height, UNKNOWN, dtype=cp.int8)
 
-        # --- Free-space carving ---
-        # A cell is only FREE if a return LANDS in it, which leaves holes where the
-        # cloud is sparse at range. Everything along the ray from the camera to a
-        # measured point is observed empty, so carve it. Without this the camera
-        # asserts FREE in ~2% of cells and the conflict factor K can never fire.
-        sx, sy = float(M[0, 3]), float(M[1, 3])
-        max_rays = 20000
-        if x.shape[0] > max_rays:
-            ri = cp.linspace(0, x.shape[0] - 1, max_rays).astype(cp.int32)
-            rxs, rys = x[ri], y[ri]
-        else:
-            rxs, rys = x, y
-        t = cp.linspace(0.02, 0.97, 170).reshape(1, -1)   # stop short of the hit itself
-        fx = (sx + (rxs.reshape(-1, 1) - sx) * t).ravel()
-        fy = (sy + (rys.reshape(-1, 1) - sy) * t).ravel()
-        fxi = ((fx - self.offset_x) / self.resolution).astype(cp.int32)
-        fyi = ((fy + self.grid_size_y / 2) / self.resolution).astype(cp.int32)
-        ok = (fxi >= 0) & (fxi < self.width) & (fyi >= 0) & (fyi < self.height)
-        grid[fyi[ok] * self.width + fxi[ok]] = FREE
-
-        rng_kept = cp.sqrt(x * x + y * y)
-        # Range-dependent obstacle threshold from the stereo error model above.
-        min_z_eff = self.min_z + self.stereo_err_coeff * rng_kept * rng_kept
-        ground = z < min_z_eff
-        obstacle = (z >= min_z_eff) & (z <= self.max_z) & (rng_kept <= self.obs_max_range)
+        ground = z < self.min_z
+        obstacle = (z >= self.min_z) & (z <= self.max_z)
 
         grid[flat[ground]] = FREE          # ground observed -> traversable
         grid[flat[obstacle]] = OCCUPIED    # obstacle wins over free (applied second)
@@ -184,7 +152,7 @@ class VisualBEVNode(Node):
         g.info.origin.position.y = float(-self.grid_size_y / 2)
         g.info.origin.position.z = 0.0
         g.info.origin.orientation.w = 1.0
-        g.data = array.array('b', grid_flat.astype(np.int8).tobytes())
+        g.data = grid_flat.tolist()
         self.pub_grid.publish(g)
 
 

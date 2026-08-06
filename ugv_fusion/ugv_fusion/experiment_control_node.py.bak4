@@ -85,21 +85,18 @@ class ExperimentControlNode(Node):
         # Format: create_waypoint(Forward_m, Left/Right_m, Turn_Radians, rx, ry, ryaw)
         
         if not self.has_parameter('waypoint_1_x'):
-            self.declare_parameter('waypoint_1_x', 8.0)   # VENUE_WP1
-            self.declare_parameter('waypoint_2_x', 15.0)   # VENUE_WP2
+            self.declare_parameter('waypoint_1_x', 10.0)   # VENUE_WP1
+            self.declare_parameter('waypoint_2_x', 20.0)   # VENUE_WP2
         d1 = self.get_parameter('waypoint_1_x').value
         d2 = self.get_parameter('waypoint_2_x').value
-        # Single goal only. Intermediate poses are HARD constraints in
-        # NavigateThroughPoses: RemovePassedGoals only culls a pose when the
-        # robot passes within 0.5 m, so avoiding an obstacle leaves the waypoint
-        # uncleared and the planner routes BACK to it. CTE is computed offline
-        # against the analytic start->goal line instead.
-        waypoints = [self.create_waypoint(d2, 0.0, 0.0, rx, ry, ryaw)]
+        wp1 = self.create_waypoint(d1, 0.0, 0.0, rx, ry, ryaw)
+        #wp2 = self.create_waypoint(10.0, 5.0, math.pi/2, rx, ry, ryaw)    # Turn 90 deg left, go 5m
+        wp2 = self.create_waypoint(d2, 0.0, 0.0, rx, ry, ryaw)
 
         # -------------------------------------
 
         goal_msg = NavigateThroughPoses.Goal()
-        goal_msg.poses = waypoints
+        goal_msg.poses = [wp1, wp2]
 
         self.get_logger().info(f"Sending {len(goal_msg.poses)} waypoints to Nav2.")
         self.send_goal_future = self.nav_client.send_goal_async(goal_msg)

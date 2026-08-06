@@ -13,10 +13,10 @@ global_costmap:
       # NavFn planner drops below 1 Hz (measured), so resolution stays at 0.10.
       rolling_window: false
       always_send_full_costmap: True
-      width: 40
-      height: 16
-      origin_x: -5.0
-      origin_y: -8.0
+      width: 100
+      height: 40
+      origin_x: -10.0
+      origin_y: -20.0
       resolution: 0.10
       robot_radius: 0.50
 
@@ -34,8 +34,8 @@ global_costmap:
           # and the planner fails to find any route.
           clearing: True
           max_obstacle_height: 2.0
-          obstacle_max_range: 10.0
-          raytrace_max_range: 20.0
+          obstacle_max_range: 50.0    # full radar detection reach
+          raytrace_max_range: 55.0
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
@@ -56,8 +56,8 @@ local_costmap:
 
       # --- LOCAL REACTIVE WINDOW: 20 m so MPPI can act on early detections ---
       rolling_window: true
-      width: 10
-      height: 10
+      width: 20
+      height: 20
       resolution: 0.10
       robot_radius: 0.50
 
