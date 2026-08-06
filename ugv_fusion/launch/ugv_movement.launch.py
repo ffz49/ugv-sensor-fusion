@@ -1,13 +1,38 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from nav2_common.launch import RewrittenYaml  # <-- Import the YAML rewriter
 
 def generate_launch_description():
     pkg_dir = get_package_share_directory('ugv_fusion')
     nav2_params_file = os.path.join(pkg_dir, 'config', 'nav2_params.yaml')
+    
+    # 1. Declare the exact same argument you used in the fusion launch file
+    enable_dynamic_objects_arg = DeclareLaunchArgument(
+        'enable_dynamic_objects',
+        default_value='true',
+        description='Set to false to disable the Nav2 spatio-temporal obstacle layer.'
+    )
+    
+    enable_dynamic_objects = LaunchConfiguration('enable_dynamic_objects')
+
+    # 2. Map the launch argument to the exact Nav2 parameter paths
+    param_substitutions = {
+        'local_costmap.local_costmap.ros__parameters.dynamic_layer.enabled': enable_dynamic_objects,
+        'global_costmap.global_costmap.ros__parameters.dynamic_layer.enabled': enable_dynamic_objects
+    }
+
+    # 3. Create a dynamic YAML object that applies the substitutions at runtime
+    configured_params = RewrittenYaml(
+        source_file=nav2_params_file,
+        root_key='',
+        param_rewrites=param_substitutions,
+        convert_types=True
+    )
     
     # AgileX Ranger/Bunker bringup
     bunker_bringup_dir = get_package_share_directory('bunker_base')
@@ -18,6 +43,7 @@ def generate_launch_description():
     nav2_launch_file = os.path.join(nav2_bringup_dir, 'launch', 'navigation_launch.py')
 
     return LaunchDescription([
+        enable_dynamic_objects_arg,
         
         # 1. AgileX UGV Driver
         IncludeLaunchDescription(
@@ -28,10 +54,10 @@ def generate_launch_description():
             }.items()
         ),
         
-        # 2. Nav2 Stack (Loads your MPPI Costmap YAML)
+        # 2. Nav2 Stack (Loads your DYNAMICALLY REWRITTEN Costmap YAML)
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(nav2_launch_file),
-            launch_arguments={'params_file': nav2_params_file}.items()
+            launch_arguments={'params_file': configured_params}.items()
         ),
         
         # 3. Your Autonomous Experiment Node (The Commander)

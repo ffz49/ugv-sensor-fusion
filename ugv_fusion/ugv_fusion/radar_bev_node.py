@@ -1,3 +1,5 @@
+from nav_msgs.msg import Odometry
+import math
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import PointCloud2
@@ -12,16 +14,23 @@ class RadarBEVNode(Node):
     def __init__(self):
         super().__init__('radar_bev_node')
 
+        # Odometry Subscriber for UGV velocity compensation
+        self.sub_odom = self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
+        self.ugv_velocity = 0.0
+
         # Grid Parameters
         self.resolution = 0.05  # 10 cm per cell
-        self.grid_size_x = 15.0  # meters forward
-        self.grid_size_y = 15.0  # meters left/right
+        self.grid_size_x = 50.0  # meters forward
+        self.grid_size_y = 30.0  # meters left/right
         self.width = int(self.grid_size_x / self.resolution)
         self.height = int(self.grid_size_y / self.resolution)
         
         # TF2 Setup: We need this to rotate the tilted points to the flat ground
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
+
+        # Persistent memory for sparse radar hits
+        self.ttl_grid = np.zeros((self.width, self.height), dtype=np.int8)
 
         # Subscriber & Publisher
         self.sub_radar = self.create_subscription(
@@ -30,6 +39,9 @@ class RadarBEVNode(Node):
             OccupancyGrid, '/planning/radar_bev_grid', 10)
             
         self.get_logger().info("Radar BEV Node Started. Waiting for TF...")
+
+    def odom_callback(self, msg):
+        self.ugv_velocity = msg.twist.twist.linear.x
 
     def radar_callback(self, msg):
         try:
@@ -43,32 +55,55 @@ class RadarBEVNode(Node):
             self.get_logger().warn(f"Radar TF Error: {e}", throttle_duration_sec=2.0)
             return
 
-        # 3. Extract the level X, Y, Z coordinates
-        pts_list = pc2.read_points_list(level_msg, field_names=("x", "y", "z"), skip_nans=True)
+        # 3. Extract X, Y, Z, RCS, and Radial Speed (Doppler)
+        pts_list = pc2.read_points_list(level_msg, field_names=("x", "y", "z", "rcs", "radial_speed"), skip_nans=True)
         if not pts_list:
             return
 
         points = np.array(pts_list, dtype=np.float32)
-        if points.ndim != 2 or points.shape[1] < 3:
+        if points.ndim != 2 or points.shape[1] < 5:
             return
             
-        # 4. Filter points within our 20x20m grid
+        # 4. Filter bounds and weak organic returns (RCS > 5.0 dBsm)
         valid_idx = (points[:, 0] >= 0) & (points[:, 0] < self.grid_size_x) & \
                     (points[:, 1] >= -self.grid_size_y / 2) & (points[:, 1] < self.grid_size_y / 2) & \
-                    (points[:, 2] > 0.10) & (points[:, 2] < 2.0)
+                    (points[:, 2] > 0.10) & (points[:, 2] < 2.0) & \
+                    (points[:, 3] > 5.0)  
+                    
         points = points[valid_idx]
 
-        # 5. Initialize the Occupancy Grid array with -1 (Unknown Space/Transparent)
-        grid_data = np.full((self.width, self.height), -1, dtype=np.int8)
+        # 5. Decay the radar memory grid by 1 every frame
+        self.ttl_grid = np.maximum(self.ttl_grid - 1, 0)
 
+        # 6. Map detected radar reflections with Velocity-Scaled Splatting & Persistence
         if len(points) > 0:
-            x_indices = (points[:, 0] / self.resolution).astype(int)
-            y_indices = ((points[:, 1] + (self.grid_size_y / 2)) / self.resolution).astype(int)
-            
-            # Map detected radar reflections as solid obstacles (100)
-            grid_data[x_indices, y_indices] = 100
+            for pt in points:
+                x, y, z, rcs, radial_speed = pt
+                
+                # Compensate for UGV forward motion to get true object velocity
+                theta = math.atan2(y, x)
+                v_abs = radial_speed - (self.ugv_velocity * math.cos(theta))
+                
+                # Dynamic Splatting: Faster moving objects get a larger footprint
+                base_splat = 2
+                speed_splat = int(abs(v_abs) * 0.5) 
+                current_splat = min(base_splat + speed_splat, 6) # Cap max radius
+                
+                grid_x = int(x / self.resolution)
+                grid_y = int((y + (self.grid_size_y / 2)) / self.resolution)
+                
+                # Apply footprint to the persistence grid
+                for dx in range(-current_splat, current_splat + 1):
+                    for dy in range(-current_splat, current_splat + 1):
+                        nx = np.clip(grid_x + dx, 0, self.width - 1)
+                        ny = np.clip(grid_y + dy, 0, self.height - 1)
+                        self.ttl_grid[nx, ny] = 5  # Persist for 5 frames
 
-        # 6. Publish the grid natively in the flat base_link frame
+        # 7. Construct final OccupancyGrid: Unknown (-1) where TTL is 0, Occupied (100) where TTL > 0
+        grid_data = np.full((self.width, self.height), -1, dtype=np.int8)
+        grid_data[self.ttl_grid > 0] = 100
+
+        # 8. Publish the grid natively in the flat base_link frame
         self.publish_grid(grid_data, level_msg.header.stamp, 'base_link')
 
     def publish_grid(self, grid_data, stamp, frame_id):

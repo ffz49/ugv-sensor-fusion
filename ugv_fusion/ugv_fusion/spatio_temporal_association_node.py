@@ -113,7 +113,16 @@ class SpatioTemporalAssociationNode(Node):
             rad_coords = np.array([box[:3] for box in self.latest_radar_boxes], dtype=float)
             
             cost_matrix = np.linalg.norm(cam_coords[:, np.newaxis, :] - rad_coords[np.newaxis, :, :], axis=2)
-            row_ind, col_ind = linear_sum_assignment(cost_matrix)
+            
+            if np.any(np.isnan(cost_matrix)) or np.any(np.isinf(cost_matrix)):
+                self.get_logger().warn("TF lookup generated NaN/Inf values. Skipping association.")
+                return
+
+            try:
+                row_ind, col_ind = linear_sum_assignment(cost_matrix)
+            except ValueError as e:
+                self.get_logger().error(f"Mathematical error in association matrix: {e}")
+                return
             
             for cam_idx, rad_idx in zip(row_ind, col_ind):
                 if cost_matrix[cam_idx, rad_idx] <= self.distance_threshold:
@@ -135,7 +144,7 @@ class SpatioTemporalAssociationNode(Node):
 
         self.pub_diagnostic.publish(diagnostic_markers)
 
-        Publish the navigable point cloud
+        # Publish the navigable point cloud
         header = Header()
         header.stamp = self.get_clock().now().to_msg()
         header.frame_id = 'base_link'

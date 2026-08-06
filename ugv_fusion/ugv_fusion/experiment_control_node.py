@@ -84,7 +84,7 @@ class ExperimentControlNode(Node):
         # --- DEFINE YOUR PATROL ROUTE HERE ---
         # Format: create_waypoint(Forward_m, Left/Right_m, Turn_Radians, rx, ry, ryaw)
         
-        wp1 = self.create_waypoint(10.0, 0.0, 0.0, rx, ry, ryaw)          # Go straight 10m
+        wp1 = self.create_waypoint(5.0, 0.0, 0.0, rx, ry, ryaw)          # Go straight 10m
         #wp2 = self.create_waypoint(10.0, 5.0, math.pi/2, rx, ry, ryaw)    # Turn 90 deg left, go 5m
         wp2 = self.create_waypoint(8.0, 0.0, 0.0, rx, ry, ryaw)          # Continue straight to 8m
 

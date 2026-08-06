@@ -14,18 +14,22 @@ class VisualBEVNode(Node):
         super().__init__('visual_bev_node')
 
         # Grid Parameters
-        self.resolution = 0.05  # 10 cm per cell
-        self.grid_size_x = 15.0  # meters forward
-        self.grid_size_y = 15.0  # meters left/right (total)
+        self.resolution = 0.05  # 5 cm per cell
+        self.grid_size_x = 50.0  # meters forward
+        self.grid_size_y = 30.0  # meters left/right (total)
         self.width = int(self.grid_size_x / self.resolution)
         self.height = int(self.grid_size_y / self.resolution)
 
         # Traversability Thresholds
-        self.obstacle_z_threshold = 0.2  # Any point 20cm above ground is an obstacle
+        self.min_z_threshold = 0.10  # Lowered to catch the base of the cone
+        self.max_z_threshold = 2.00  # Ignore tree branches/sky above 2.0m
 
         # TF2 Setup
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
+
+        # Persistent memory for obstacles (Time-To-Live)
+        self.ttl_grid = cp.zeros((self.width, self.height), dtype=cp.int8)
 
         # Publishers & Subscribers
         self.sub_cloud = self.create_subscription(
@@ -70,16 +74,23 @@ class VisualBEVNode(Node):
         x_indices = (points[:, 0] / self.resolution).astype(cp.int32)
         y_indices = ((points[:, 1] + (self.grid_size_y / 2)) / self.resolution).astype(cp.int32)
 
-        # Initialize the Occupancy Grid array on the GPU with -1 (Unknown)
-        grid_data = cp.full((self.width, self.height), -1, dtype=cp.int8)
-
         # Fast 2D height mapping
-        free_mask = points[:, 2] < self.obstacle_z_threshold
-        obs_mask = points[:, 2] >= self.obstacle_z_threshold
+        free_mask = points[:, 2] < self.min_z_threshold
+        obs_mask = (points[:, 2] >= self.min_z_threshold) & (points[:, 2] <= self.max_z_threshold)
 
-        # Apply Free Space (0) first, then overwrite with Obstacles (100)
-        grid_data[x_indices[free_mask], y_indices[free_mask]] = 0
-        grid_data[x_indices[obs_mask], y_indices[obs_mask]] = 100
+        # 1. Decay TTL by 1 every frame (drops memory over time)
+        self.ttl_grid = cp.maximum(self.ttl_grid - 1, 0)
+        
+        # 2. Free space instantly clears memory (it's safe now)
+        self.ttl_grid[x_indices[free_mask], y_indices[free_mask]] = 0
+        
+        # 3. New obstacles reset the TTL counter to 5 frames (~0.5 seconds at 10Hz)
+        self.ttl_grid[x_indices[obs_mask], y_indices[obs_mask]] = 5
+
+        # 4. Construct the ROS-ready frame from the persistent TTL grid
+        grid_data = cp.full((self.width, self.height), -1, dtype=cp.int8)
+        grid_data[self.ttl_grid == 0] = 0    # Free space
+        grid_data[self.ttl_grid > 0] = 100   # Persisted Obstacles
 
         # Pull the final calculated grid back to the CPU for ROS publishing
         cpu_grid_data = cp.asnumpy(grid_data)

@@ -2,41 +2,39 @@ global_costmap:
   global_costmap:
     ros__parameters:
       transform_tolerance: 1.0
-      update_frequency: 10.0
-      publish_frequency: 10.0
+      update_frequency: 2.0        # DOWN from 5.0
+      publish_frequency: 1.0       # DOWN from 2.0
       global_frame: odom
       robot_base_frame: base_link
       use_sim_time: false
-      rolling_window: true
-      width: 30
-      height: 30
-      resolution: 0.05
+
+      # --- GLOBAL CANVAS (200m x 200m Memory Canvas) ---
+      rolling_window: false       # Fixed canvas in odom frame for spatial memory
+      width: 100                  # meters
+      height: 100                 # meters
+      origin_x: -100.0            # <-- ADD THIS: Shifts map 100m backwards
+      origin_y: -100.0            # <-- ADD THIS: Shifts map 100m to the right
+      resolution: 0.05            # High-precision 5cm grid
       footprint: "[ [0.525, 0.38], [0.525, -0.38], [-0.525, -0.38], [-0.525, 0.38] ]"
-      # SYNTAX FIXED: Changed to include the new dynamic layer
-      plugins: ["bev_layer", "dynamic_layer", "inflation_layer"]
 
-      bev_layer:
-        plugin: "nav2_costmap_2d::StaticLayer"
-        map_subscribe_transient_local: false
-        map_topic: "/planning/fused_bev_grid"
-        subscribe_to_updates: true
+      plugins: ["memory_layer", "inflation_layer"]
 
-      # NEW: Spatio-Temporal Dynamic Layer
-      dynamic_layer:
+      # --- PERMANENT MEMORY LAYER ---
+      memory_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
-        enabled: True  # Toggle to False to isolate BEV-only testing
-        observation_sources: dynamic_cloud
-        dynamic_cloud:
-          topic: /planning/dynamic_obstacles
+        enabled: True
+        observation_sources: fused_memory_cloud
+        fused_memory_cloud:
+          topic: /planning/fused_memory_cloud
           data_type: PointCloud2
-          clearing: True
           marking: True
-          obstacle_max_range: 15.0
-          raytrace_max_range: 20.0
+          clearing: False         # NEVER clear: creates permanent memory for current run
+          obstacle_max_range: 55.0
+          raytrace_max_range: 55.0
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.8
+        inflation_radius: 1.0
         cost_scaling_factor: 3.0
 
 local_costmap:
@@ -48,11 +46,14 @@ local_costmap:
       global_frame: odom
       robot_base_frame: base_link
       use_sim_time: false
-      rolling_window: true
-      width: 15
-      height: 15
+
+      # --- LOCAL REACTIVE WINDOW ---
+      rolling_window: true        # Moves dynamically centered on UGV
+      width: 12                   # 12 meters local window
+      height: 12                  # 12 meters local window
       resolution: 0.05
       footprint: "[ [0.525, 0.38], [0.525, -0.38], [-0.525, -0.38], [-0.525, 0.38] ]"
+
       plugins: ["bev_layer", "dynamic_layer", "inflation_layer"]
 
       bev_layer:
@@ -60,6 +61,7 @@ local_costmap:
         map_subscribe_transient_local: false
         map_topic: "/planning/fused_bev_grid"
         subscribe_to_updates: true
+        track_unknown_space: false
 
       dynamic_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
@@ -68,7 +70,7 @@ local_costmap:
         dynamic_cloud:
           topic: /planning/dynamic_obstacles
           data_type: PointCloud2
-          clearing: True
+          clearing: True          # Clears dynamic objects when they move away
           marking: True
           obstacle_max_range: 15.0
           raytrace_max_range: 20.0
@@ -81,17 +83,17 @@ local_costmap:
 controller_server:
   ros__parameters:
     controller_frequency: 10.0
+    footprint: "[ [0.525, 0.38], [0.525, -0.38], [-0.525, -0.38], [-0.525, 0.38] ]"
     controller_plugins: ["FollowPath"]
 
     FollowPath:
       plugin: "nav2_mppi_controller::MPPIController"
-      time_steps: 50
+      time_steps: 50             # down from 50
       model_dt: 0.1
-      # TUNED: Reduced to 1000 to prevent CPU starvation and control loop misses
-      batch_size: 1000
+      batch_size: 1000            # down from 1000
 
       vx_max: 1.0
-      vx_min: 0.0 # no reversing via MPPI
+      vx_min: 0.0
       vy_max: 0.0
       wz_max: 1.0
 
@@ -99,30 +101,31 @@ controller_server:
       vy_std: 0.0
       wz_std: 0.4
 
-      # SYNTAX FIXED: Restored truncated array and added TwirlingCritic
+      # FIXED SYNTAX: Properly formatted list
       critics: ["ConstraintCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "ObstaclesCritic", "TwirlingCritic"]
 
       ObstaclesCritic:
-        cost_weight: 50.0      # aggressive setting
-        repulsion_weight: 15.0 # aggressive setting
+        cost_weight: 50.0
+        repulsion_weight: 15.0
 
       TwirlingCritic:
-        cost_weight: 10.0      # Forces smoother forward arcs instead of tank-turns
+        cost_weight: 10.0
 
 bt_navigator:
   ros__parameters:
     global_frame: odom
     enable_recovery: true
+    bt_loop_duration: 50          # ADD THIS: Allows the tree 50ms (20Hz) instead of forcing 10ms (100Hz)
 
 planner_server:
   ros__parameters:
     transform_tolerance: 1.0
-    expected_planner_frequency: 10.0
+    expected_planner_frequency: 2.0 # DOWN from 10.0 (Crucial for 16M cell maps)
     planner_plugins: ["GridBased"]
     GridBased:
       plugin: "nav2_navfn_planner/NavfnPlanner"
       use_astar: true
-      allow_unknown: false  # Kept your strict setting
+      allow_unknown: true         # Critical for exploring unmapped off-road space
       tolerance: 0.5
 
 behavior_server:
