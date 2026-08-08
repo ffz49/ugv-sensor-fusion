@@ -11,12 +11,14 @@ global_costmap:
       # --- GLOBAL CANVAS: 100 m patrol length x 40 m lateral ---
       # 100x40 @ 0.10 m = 400k cells. At 0.05 m this would be 1.6M and the
       # NavFn planner drops below 1 Hz (measured), so resolution stays at 0.10.
-      rolling_window: false
+      # Rolling: marks fall out of the window as the robot advances, so stale
+      # false positives cannot accumulate. clearing:True only raytraces cells
+      # the sensor looks THROUGH; a forward-facing sensor never re-observes
+      # cells beside or behind it, so a static map fills up and the planner fails.
+      rolling_window: true
       always_send_full_costmap: True
       width: 40
-      height: 16
-      origin_x: -5.0
-      origin_y: -8.0
+      height: 40
       resolution: 0.10
       robot_radius: 0.50
 
@@ -41,8 +43,8 @@ global_costmap:
         plugin: "nav2_costmap_2d::InflationLayer"
         # 0.85 > circumscribed radius 0.648 m (sqrt(0.525^2 + 0.38^2)).
         # Smaller values trigger "Inconsistent configuration in collision checking".
-        inflation_radius: 0.70
-        cost_scaling_factor: 1.8
+        inflation_radius: 0.55
+        cost_scaling_factor: 2.5
 
 local_costmap:
   local_costmap:
@@ -94,8 +96,8 @@ local_costmap:
 
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.70
-        cost_scaling_factor: 1.8
+        inflation_radius: 0.55
+        cost_scaling_factor: 2.5
 
 controller_server:
   ros__parameters:
@@ -176,8 +178,8 @@ controller_server:
         cost_power: 1
         repulsion_weight: 1.8
         critical_weight: 20.0
-        inflation_radius: 0.70
-        cost_scaling_factor: 1.8
+        inflation_radius: 0.55
+        cost_scaling_factor: 2.5
         consider_footprint: false
         collision_cost: 100000.0
         collision_margin_distance: 0.30
@@ -188,6 +190,7 @@ bt_navigator:
     global_frame: odom
     robot_base_frame: base_link
     enable_recovery: true
+    default_nav_through_poses_bt_xml: "/home/user/ros2_ws/install/ugv_fusion/share/ugv_fusion/behavior_trees/navigate_through_poses_w_replanning_and_recovery.xml"
     bt_loop_duration: 50
 
 planner_server:

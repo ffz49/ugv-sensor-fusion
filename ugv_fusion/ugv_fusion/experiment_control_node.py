@@ -89,12 +89,17 @@ class ExperimentControlNode(Node):
             self.declare_parameter('waypoint_2_x', 15.0)   # VENUE_WP2
         d1 = self.get_parameter('waypoint_1_x').value
         d2 = self.get_parameter('waypoint_2_x').value
-        # Single goal only. Intermediate poses are HARD constraints in
-        # NavigateThroughPoses: RemovePassedGoals only culls a pose when the
-        # robot passes within 0.5 m, so avoiding an obstacle leaves the waypoint
-        # uncleared and the planner routes BACK to it. CTE is computed offline
-        # against the analytic start->goal line instead.
-        waypoints = [self.create_waypoint(d2, 0.0, 0.0, rx, ry, ryaw)]
+        # Waypoints every `waypoint_spacing` m. Safe with the custom BT
+        # (RemovePassedGoals radius 2.5 m): a pose is culled even when the robot
+        # swerves ~2 m wide, so the planner never routes backwards to it.
+        if not self.has_parameter('waypoint_spacing'):
+            self.declare_parameter('waypoint_spacing', 5.0)
+        spacing = float(self.get_parameter('waypoint_spacing').value)
+        waypoints, dist = [], spacing
+        while dist < d2 - 0.5:
+            waypoints.append(self.create_waypoint(dist, 0.0, 0.0, rx, ry, ryaw))
+            dist += spacing
+        waypoints.append(self.create_waypoint(d2, 0.0, 0.0, rx, ry, ryaw))
 
         # -------------------------------------
 

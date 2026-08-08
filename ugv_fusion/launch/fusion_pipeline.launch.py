@@ -21,7 +21,9 @@ def generate_launch_description():
         enable_dynamic_objects_arg,
 
         # Highway 1: Static BEV Evidential Pipeline (ALWAYS ON)
-        Node(package=package_name, executable='visual_bev_node', name='visual_bev_node', output='screen'),
+        Node(package=package_name, executable='visual_bev_node', name='visual_bev_node', output='screen',
+             parameters=[{'stereo_err_coeff': 0.005,   # FULL res halves depth error
+                          'obstacle_max_range': 14.0}]),
         Node(package=package_name, executable='radar_bev_node', name='radar_bev_node', output='screen',
              parameters=[{'vegetation_mode': False,
                           'hard_rcs_min': 10.0,

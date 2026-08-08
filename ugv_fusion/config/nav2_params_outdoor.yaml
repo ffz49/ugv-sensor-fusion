@@ -188,6 +188,7 @@ bt_navigator:
     global_frame: odom
     robot_base_frame: base_link
     enable_recovery: true
+    default_nav_through_poses_bt_xml: "/home/user/ros2_ws/install/ugv_fusion/share/ugv_fusion/behavior_trees/navigate_through_poses_w_replanning_and_recovery.xml"
     bt_loop_duration: 50
 
 planner_server:
